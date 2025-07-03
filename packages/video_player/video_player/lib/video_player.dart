@@ -912,7 +912,7 @@ class _VideoAppLifeCycleObserver extends Object with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.paused) {
       print('AppLifecycleState.paused');
-      if (!(_controller.value.size == Size(0.0, 0.0))) {
+      if (!(_controller.value.size == Size.zero)) {
         _wasPlayingBeforePause = _controller.value.isPlaying;
         _controller.pause();
       }
