@@ -334,12 +334,12 @@ class VideoPlayerController extends ValueNotifier<VideoPlayerValue> {
     this.videoPlayerOptions,
     this.httpHeaders = const <String, String>{},
     this.viewType = VideoViewType.textureView,
-    youtubeVideoQuality = null,
-    isYTLink = null,
   }) : _closedCaptionFileFuture = closedCaptionFile,
        dataSource = url.toString(),
        dataSourceType = DataSourceType.network,
        package = null,
+       youtubeVideoQuality = null,
+       isYTLink = null,
        super(const VideoPlayerValue(duration: Duration.zero));
 
   /// Constructs a [VideoPlayerController] playing a video from a file.
@@ -357,6 +357,8 @@ class VideoPlayerController extends ValueNotifier<VideoPlayerValue> {
        dataSourceType = DataSourceType.file,
        package = null,
        formatHint = null,
+       youtubeVideoQuality = null,
+       isYTLink = null,
        super(const VideoPlayerValue(duration: Duration.zero));
 
   /// Constructs a [VideoPlayerController] playing a video from a contentUri.
