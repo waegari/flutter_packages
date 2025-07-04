@@ -9,6 +9,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:video_player_platform_interface/video_player_platform_interface.dart';
+import 'package:youtube_explode_dart/youtube_explode_dart.dart';
 
 import 'src/closed_caption_file.dart';
 
@@ -68,9 +69,10 @@ class VideoPlayerValue {
   /// Returns an instance with the given [errorDescription].
   const VideoPlayerValue.erroneous(String errorDescription)
       : this(
-            duration: Duration.zero,
-            isInitialized: false,
-            errorDescription: errorDescription);
+          duration: Duration.zero,
+          isInitialized: false,
+          errorDescription: errorDescription,
+        );
 
   /// This constant is just to indicate that parameter is not passed to [copyWith]
   /// workaround for this issue https://github.com/dart-lang/language/issues/2009
@@ -284,6 +286,8 @@ class VideoPlayerController extends ValueNotifier<VideoPlayerValue> {
         dataSourceType = DataSourceType.asset,
         formatHint = null,
         httpHeaders = const <String, String>{},
+        youtubeVideoQuality = null,
+        isYTLink = null,
         super(const VideoPlayerValue(duration: Duration.zero));
 
   /// Constructs a [VideoPlayerController] playing a network video.
@@ -307,6 +311,8 @@ class VideoPlayerController extends ValueNotifier<VideoPlayerValue> {
     this.videoPlayerOptions,
     this.httpHeaders = const <String, String>{},
     this.viewType = VideoViewType.textureView,
+    this.youtubeVideoQuality,
+    this.isYTLink,
   })  : _closedCaptionFileFuture = closedCaptionFile,
         dataSourceType = DataSourceType.network,
         package = null,
@@ -332,6 +338,8 @@ class VideoPlayerController extends ValueNotifier<VideoPlayerValue> {
         dataSource = url.toString(),
         dataSourceType = DataSourceType.network,
         package = null,
+        youtubeVideoQuality = null,
+        isYTLink = null,
         super(const VideoPlayerValue(duration: Duration.zero));
 
   /// Constructs a [VideoPlayerController] playing a video from a file.
@@ -349,6 +357,8 @@ class VideoPlayerController extends ValueNotifier<VideoPlayerValue> {
         dataSourceType = DataSourceType.file,
         package = null,
         formatHint = null,
+        youtubeVideoQuality = null,
+        isYTLink = null,
         super(const VideoPlayerValue(duration: Duration.zero));
 
   /// Constructs a [VideoPlayerController] playing a video from a contentUri.
@@ -360,8 +370,12 @@ class VideoPlayerController extends ValueNotifier<VideoPlayerValue> {
     Future<ClosedCaptionFile>? closedCaptionFile,
     this.videoPlayerOptions,
     this.viewType = VideoViewType.textureView,
-  })  : assert(defaultTargetPlatform == TargetPlatform.android,
-            'VideoPlayerController.contentUri is only supported on Android.'),
+    this.youtubeVideoQuality,
+    this.isYTLink,
+  })  : assert(
+          defaultTargetPlatform == TargetPlatform.android,
+          'VideoPlayerController.contentUri is only supported on Android.',
+        ),
         _closedCaptionFileFuture = closedCaptionFile,
         dataSource = contentUri.toString(),
         dataSourceType = DataSourceType.contentUri,
@@ -373,6 +387,12 @@ class VideoPlayerController extends ValueNotifier<VideoPlayerValue> {
   /// The URI to the video file. This will be in different formats depending on
   /// the [DataSourceType] of the original video.
   final String dataSource;
+
+  /// youtube video quality, default: VideoQuality.medium360
+  final VideoQuality? youtubeVideoQuality;
+
+  /// the URI to the youtube or not.
+  final bool? isYTLink;
 
   /// HTTP headers used for the request to the [dataSource].
   /// Only for [VideoPlayerController.network].
@@ -416,6 +436,36 @@ class VideoPlayerController extends ValueNotifier<VideoPlayerValue> {
   @visibleForTesting
   int get playerId => _playerId;
 
+  /// To Get VideoId from Url
+  static String? _getIdFromUrl(String url, [bool trimWhitespaces = true]) {
+    List<RegExp> _regexps = [
+      RegExp(
+        r'^https:\/\/(?:www\.|m\.)?youtube\.com\/watch\?v=([_\-a-zA-Z0-9]{11}).*$',
+      ),
+      RegExp(
+        r'^https:\/\/(?:www\.|m\.)?youtube(?:-nocookie)?\.com\/embed\/([_\-a-zA-Z0-9]{11}).*$',
+      ),
+      RegExp(r'^https:\/\/youtu\.be\/([_\-a-zA-Z0-9]{11}).*$'),
+    ];
+
+    if (url == null || url.isEmpty) {
+      return null;
+    }
+
+    if (trimWhitespaces) {
+      url = url.trim();
+    }
+
+    for (RegExp exp in _regexps) {
+      final Match? match = exp.firstMatch(url);
+      if (match != null && match.groupCount >= 1) {
+        return match.group(1);
+      }
+    }
+
+    return null;
+  }
+
   /// Attempts to open the given [dataSource] and load metadata about the video.
   Future<void> initialize() async {
     final bool allowBackgroundPlayback =
@@ -425,6 +475,61 @@ class VideoPlayerController extends ValueNotifier<VideoPlayerValue> {
     }
     _lifeCycleObserver?.initialize();
     _creatingCompleter = Completer<void>();
+
+    final VideoQuality quality = youtubeVideoQuality ?? VideoQuality.medium360;
+
+    String finalYoutubeUrl = dataSource;
+    if (_getIdFromUrl(dataSource) != null && (isYTLink ?? false)) {
+      try {
+        Map<String, String> videoUrls = Map();
+        final String? _videoId = _getIdFromUrl(dataSource);
+        String _fetchUrl = "";
+
+        YoutubeExplode yt = YoutubeExplode();
+
+        // final StreamManifest manifest = await yt.videos.streamsClient
+        //     .getManifest(_videoId);
+
+        final StreamManifest manifest = await yt.videos.streams.getManifest(
+          _videoId,
+          ytClients: [YoutubeApiClient.tv],
+        );
+
+        if (manifest.muxed.isEmpty) {
+          print('manifest.muxed is EMPTY');
+
+          if (manifest.video.isEmpty) {
+            throw 'No muxed or video stream found for video $_videoId (maybe restricted, private, or not supported)';
+          }
+
+          Uri? videoUri;
+          for (final VideoStreamInfo m in manifest.video) {
+            if (quality == m.videoQuality) {
+              videoUri = m.url;
+            }
+          }
+          if (videoUri == null) {
+            finalYoutubeUrl = manifest.video.first.url.toString();
+          } else {
+            finalYoutubeUrl = videoUri.toString();
+          }
+        }
+
+        Uri? videoUri;
+        for (final MuxedStreamInfo m in manifest.muxed) {
+          if (quality == m.videoQuality) {
+            videoUri = m.url;
+          }
+        }
+        if (videoUri == null) {
+          finalYoutubeUrl = manifest.muxed.first.url.toString();
+        } else {
+          finalYoutubeUrl = videoUri.toString();
+        }
+      } catch (err) {
+        throw 'getIdFromUrl error: $err';
+      }
+    }
 
     late DataSource dataSourceDescription;
     switch (dataSourceType) {
@@ -437,7 +542,7 @@ class VideoPlayerController extends ValueNotifier<VideoPlayerValue> {
       case DataSourceType.network:
         dataSourceDescription = DataSource(
           sourceType: DataSourceType.network,
-          uri: dataSource,
+          uri: finalYoutubeUrl,
           formatHint: formatHint,
           httpHeaders: httpHeaders,
         );
@@ -450,7 +555,7 @@ class VideoPlayerController extends ValueNotifier<VideoPlayerValue> {
       case DataSourceType.contentUri:
         dataSourceDescription = DataSource(
           sourceType: DataSourceType.contentUri,
-          uri: dataSource,
+          uri: finalYoutubeUrl,
         );
     }
 
@@ -460,14 +565,17 @@ class VideoPlayerController extends ValueNotifier<VideoPlayerValue> {
     );
 
     if (videoPlayerOptions?.mixWithOthers != null) {
-      await _videoPlayerPlatform
-          .setMixWithOthers(videoPlayerOptions!.mixWithOthers);
+      await _videoPlayerPlatform.setMixWithOthers(
+        videoPlayerOptions!.mixWithOthers,
+      );
     }
 
     _playerId =
         (await _videoPlayerPlatform.createWithOptions(creationOptions)) ??
             kUninitializedPlayerId;
-    _creatingCompleter!.complete(null);
+    if (_creatingCompleter != null && !_creatingCompleter!.isCompleted) {
+      _creatingCompleter!.complete(null);
+    }
     final Completer<void> initializingCompleter = Completer<void>();
 
     // Apply the web-specific options
@@ -522,8 +630,10 @@ class VideoPlayerController extends ValueNotifier<VideoPlayerValue> {
           value = value.copyWith(isBuffering: false);
         case VideoEventType.isPlayingStateUpdate:
           if (event.isPlaying ?? false) {
-            value =
-                value.copyWith(isPlaying: event.isPlaying, isCompleted: false);
+            value = value.copyWith(
+              isPlaying: event.isPlaying,
+              isCompleted: false,
+            );
           } else {
             value = value.copyWith(isPlaying: event.isPlaying);
           }
@@ -614,19 +724,18 @@ class VideoPlayerController extends ValueNotifier<VideoPlayerValue> {
       await _videoPlayerPlatform.play(_playerId);
 
       _timer?.cancel();
-      _timer = Timer.periodic(
-        const Duration(milliseconds: 100),
-        (Timer timer) async {
-          if (_isDisposed) {
-            return;
-          }
-          final Duration? newPosition = await position;
-          if (newPosition == null) {
-            return;
-          }
-          _updatePosition(newPosition);
-        },
-      );
+      _timer = Timer.periodic(const Duration(milliseconds: 100), (
+        Timer timer,
+      ) async {
+        if (_isDisposed) {
+          return;
+        }
+        final Duration? newPosition = await position;
+        if (newPosition == null) {
+          return;
+        }
+        _updatePosition(newPosition);
+      });
 
       // This ensures that the correct playback speed is always applied when
       // playing back. This is necessary because we do not set playback speed
@@ -657,10 +766,7 @@ class VideoPlayerController extends ValueNotifier<VideoPlayerValue> {
       return;
     }
 
-    await _videoPlayerPlatform.setPlaybackSpeed(
-      _playerId,
-      value.playbackSpeed,
-    );
+    await _videoPlayerPlatform.setPlaybackSpeed(_playerId, value.playbackSpeed);
   }
 
   /// The position in the current video.
@@ -832,8 +938,11 @@ class _VideoAppLifeCycleObserver extends Object with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.paused) {
-      _wasPlayingBeforePause = _controller.value.isPlaying;
-      _controller.pause();
+      print('AppLifecycleState.paused');
+      if (!(_controller.value.size == Size.zero)) {
+        _wasPlayingBeforePause = _controller.value.isPlaying;
+        _controller.pause();
+      }
     } else if (state == AppLifecycleState.resumed) {
       if (_wasPlayingBeforePause) {
         _controller.play();
@@ -923,10 +1032,7 @@ class _VideoPlayerWithRotation extends StatelessWidget {
     if (rotation == 0) {
       return child;
     }
-    return RotatedBox(
-      quarterTurns: rotation ~/ 90,
-      child: child,
-    );
+    return RotatedBox(quarterTurns: rotation ~/ 90, child: child);
   }
 }
 
@@ -1211,10 +1317,9 @@ class ClosedCaption extends StatelessWidget {
     }
 
     final TextStyle effectiveTextStyle = textStyle ??
-        DefaultTextStyle.of(context).style.copyWith(
-              fontSize: 36.0,
-              color: Colors.white,
-            );
+        DefaultTextStyle.of(
+          context,
+        ).style.copyWith(fontSize: 36.0, color: Colors.white);
 
     return Align(
       alignment: Alignment.bottomCenter,
