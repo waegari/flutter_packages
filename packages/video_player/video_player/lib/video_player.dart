@@ -490,6 +490,10 @@ class VideoPlayerController extends ValueNotifier<VideoPlayerValue> {
         final StreamManifest manifest = await yt.videos.streamsClient
             .getManifest(_videoId);
 
+        if (manifest.muxed.isEmpty) {
+          throw 'No muxed stream found for video $_videoId (maybe restricted, private, or not supported)';
+        }
+
         Uri? videoUri;
         for (final MuxedStreamInfo m in manifest.muxed) {
           if (quality == m.videoQuality) {
