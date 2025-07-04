@@ -487,8 +487,14 @@ class VideoPlayerController extends ValueNotifier<VideoPlayerValue> {
 
         YoutubeExplode yt = YoutubeExplode();
 
-        final StreamManifest manifest = await yt.videos.streamsClient
-            .getManifest(_videoId);
+        // final StreamManifest manifest = await yt.videos.streamsClient
+        //     .getManifest(_videoId);
+
+        final StreamManifest manifest = await yt.videos.streams.getManifest(
+          _videoId,
+        );
+
+        print(manifest);
 
         if (manifest.muxed.isEmpty) {
           throw 'No muxed stream found for video $_videoId (maybe restricted, private, or not supported)';
