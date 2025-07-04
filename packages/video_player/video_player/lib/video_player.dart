@@ -501,8 +501,11 @@ class VideoPlayerController extends ValueNotifier<VideoPlayerValue> {
         print(manifest.hls);
         print('audio: ');
         print(manifest.audio);
+        print('muxed: ');
+        print(manifest.muxed);
 
         if (manifest.muxed.isEmpty) {
+          print('manifest.muxed is EMPTY');
           // throw 'No muxed stream found for video $_videoId (maybe restricted, private, or not supported)';
 
           Uri? videoUri;
