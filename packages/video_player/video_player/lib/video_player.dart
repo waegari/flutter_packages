@@ -495,18 +495,12 @@ class VideoPlayerController extends ValueNotifier<VideoPlayerValue> {
           ytClients: [YoutubeApiClient.tv],
         );
 
-        print('video: ');
-        print(manifest.video);
-        print('hls: ');
-        print(manifest.hls);
-        print('audio: ');
-        print(manifest.audio);
-        print('muxed: ');
-        print(manifest.muxed);
-
         if (manifest.muxed.isEmpty) {
           print('manifest.muxed is EMPTY');
-          // throw 'No muxed stream found for video $_videoId (maybe restricted, private, or not supported)';
+
+          if (manifest.video.isEmpty) {
+            throw 'No muxed or video stream found for video $_videoId (maybe restricted, private, or not supported)';
+          }
 
           Uri? videoUri;
           for (final VideoStreamInfo m in manifest.video) {
