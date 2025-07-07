@@ -334,12 +334,12 @@ class VideoPlayerController extends ValueNotifier<VideoPlayerValue> {
     this.videoPlayerOptions,
     this.httpHeaders = const <String, String>{},
     this.viewType = VideoViewType.textureView,
+    this.youtubeVideoQuality,
+    this.isYTLink,
   })  : _closedCaptionFileFuture = closedCaptionFile,
         dataSource = url.toString(),
         dataSourceType = DataSourceType.network,
         package = null,
-        youtubeVideoQuality = null,
-        isYTLink = null,
         super(const VideoPlayerValue(duration: Duration.zero));
 
   /// Constructs a [VideoPlayerController] playing a video from a file.
